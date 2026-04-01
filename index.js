@@ -1,156 +1,226 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { 
+    Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, 
+    ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, 
+    Partials 
+} = require('discord.js');
 const axios = require('axios');
 const tar = require('tar-stream');
 const { Readable } = require('stream');
 
-// Importamos la base de datos completa de database.js
-const { 
-    BLACKLIST_BUNDLES, 
-    CHEAT_INFRA,
-    SUSPICIOUS_TLDS,
-    VPS_KEYWORDS,
-    SUSPICIOUS_WORDS,
-    WHITELIST,
-    ALLOWED_EXTENSIONS 
-} = require('./database');
+// --- 1. BASE DE DATOS INTEGRADA (TODOS TUS PERFILES) ---
+const DATABASE = {
+    BUNDLES: {
+        "com.opa334.TrollStore": "TrollStore — Sideload permanente",
+        "com.opa334.TrollStoreHelper": "TrollStoreHelper",
+        "com.opa334.trolldecrypt": "TrollDecrypt — decifrar IPAs",
+        "com.opa334.trollfools": "TrollFools — injetor de tweaks",
+        "xyz.willy.Zebra": "Zebra — package manager JB",
+        "com.cydia.Cydia": "Cydia — package manager JB",
+        "com.rileytestut.AltStore": "AltStore — sideload",
+        "com.altstore.altstoreclassic": "AltStore Classic — sideload",
+        "com.sideloadly.sideloadly": "Sideloadly — sideload",
+        "com.esign.ios": "ESign — sideload/IPA installer",
+        "com.esign.esign": "ESign (alt) — sideload",
+        "com.iosgods.iosgods": "iOSGods — cheat app store",
+        "com.gbox.pubg": "GBox — cheat mod pubg/ff",
+        "com.tigisoftware.Filza": "Filza — file manager root",
+        "com.tigisoftware.FilzaFree": "Filza Free — file manager root",
+        "app.ish.iSH": "iSH — shell Linux no iOS",
+        "com.septudio.SSHClientLite": "SSH Client Lite — shell remoto",
+        "live.cclerc.geranium": "Geranium — tweak manager JB",
+        "com.apple.dt.Xcode": "Xcode — IDE Apple (sospechoso)",
+        "com.apple.Preferences.Developer": "Preferencias de Desenvolvedor (activas)",
+        "com.apple.developer": "Perfil de desenvolvedor Apple",
+        "com.shpion.cleaner": "Spion Cleaner — limpieza de rastros",
+        "com.ifunbox.ifunbox": "iFunBox — administrador de archivos",
+        "com.limneos.adprivacy": "AdPrivacy — bloqueo/manipulación de red",
+        "com.jjcm.nomoread": "NoMoreAd — bloqueo de red (MITM)",
+        "com.touchingapp.potatsolite": "PotatsoLite — proxy iOS (mitm cheat)",
+        "com.touchingapp.potatso": "Potatso — proxy iOS",
+        "com.monite.proxyff": "ProxyFF — proxy iOS (cheat confirmado)",
+        "com.nssurge.inc.surge-ios": "Surge — proxy/MITM iOS",
+        "com.luo.quantumultx": "Quantumult X — proxy iOS",
+        "com.shadowrocket.Shadowrocket": "Shadowrocket — proxy iOS",
+        "com.opa334.dopamine": "Dopamine — Jailbreak",
+        "org.coolstar.sileo": "Sileo — package manager JB",
+        "com.electrateam.unc0ver": "unc0ver — Jailbreak",
+        "xyz.palera1n.palera1n": "palera1n — Jailbreak"
+    },
+    INFRA: {
+        "46.202.145.85": "Fatality Cheats — Servidor",
+        "fatalitycheats.xyz": "Fatality Cheats — Dominio",
+        "anubisw.online": "Anubis Cheat — FF",
+        "api.baontq.xyz": "API Cheat — FF",
+        "version.ffmax.purplevioleto.com": "PurpleVioleto FF MAX",
+        "version.ggwhitehawk.com": "White Hawk Cheat",
+        "loginbp.ggpolarbear.com": "Polar Bear Cheat",
+        "sacnetwork.ggblueshark.com": "Blue Shark Cheat",
+        "sacevent.ggblueshark.com": "Blue Shark Event"
+    },
+    WORDS: ["proxy", "cheat", "hack", "bypass", "mitm", "inject", "spoof", "crack", "exploit", "payload", "tunnel", "vpn", "socks"],
+    TLDS: [".site", ".store", ".netlify.app", ".xyz", ".pw", ".top", ".click", ".win", ".download", ".icu", ".monster", ".lol", ".gq", ".tk"],
+    VPS: ["hostinger", "digitalocean", "vultr", "hetzner", "ovh", "linode", "akamai", "contabo", "ionos", "godaddy", "aws", "googlecloud", "azure", "choopa", "sharktech", "quadranet", "path.net", "leaseweb", "multacom"],
+    EXT: [".sys", ".plist", ".tar", ".log", ".txt"]
+};
+
+// --- 2. CONFIGURACIÓN DE IDS Y CLIENTE ---
+const CATEGORY_ID = '1488840757484982353';
+const ROLE_ANALISTA_1 = '1488841621649883176';
+const ROLE_ANALISTA_2 = '1211760228673257524';
+const TOKEN = process.env.DISCORD_TOKEN || 'TU_TOKEN_AQUI';
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
     ]
 });
 
-// TOKEN DE TU BOT (Mantenlo en secreto)
-const TOKEN = 'TU_TOKEN_AQUI';
-
 client.once('ready', () => {
-    console.log(`✅ Scanner La Vagancia v2.0 online: ${client.user.tag}`);
+    console.log(`✅ Scanner La Vagancia v3.0 listo como ${client.user.tag}`);
 });
 
+// --- 3. COMANDOS Y SCANNER ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
+    // Comando para crear el Panel de Tickets
+    if (message.content === '!ticketss') {
+        if (!message.member.roles.cache.has(ROLE_ANALISTA_1) && !message.member.roles.cache.has(ROLE_ANALISTA_2)) return;
+
+        const embed = new EmbedBuilder()
+            .setTitle('🛡️ Auditoría La Vagancia')
+            .setDescription('Presiona el botón para abrir un ticket de revisión.\n\n**Aguarde a que un analista lo atienda.**')
+            .setColor(0x2b2d31)
+            .setFooter({ text: 'Protección Anti-Cheat iOS' });
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('abrir_ticket').setLabel('Abrir Auditoría').setStyle(ButtonStyle.Primary).setEmoji('🔍')
+        );
+
+        await message.channel.send({ embeds: [embed], components: [row] });
+        if (message.deletable) await message.delete();
+    }
+
+    // Lógica del Scanner (Solo se activa si un ANALISTA sube el archivo)
     const attachment = message.attachments.first();
-    if (!attachment) return;
+    if (attachment) {
+        const esAnalista = message.member.roles.cache.has(ROLE_ANALISTA_1) || message.member.roles.cache.has(ROLE_ANALISTA_2);
+        if (!esAnalista) return;
 
-    const fileName = attachment.name.toLowerCase();
-    const isSupported = ALLOWED_EXTENSIONS.some(ext => fileName.endsWith(ext));
+        const fileName = attachment.name.toLowerCase();
+        if (DATABASE.EXT.some(ext => fileName.endsWith(ext))) {
+            const statusMsg = await message.reply("📡 **Escaneando archivos en busca de inyecciones...**");
+            
+            try {
+                const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+                const buffer = Buffer.from(response.data);
+                let detections = new Set();
 
-    if (isSupported) {
-        const statusMsg = await message.reply("📡 **Iniciando Auditoría de Seguridad...** Analizando paquetes y firmas.");
-        
-        try {
-            const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
-            const buffer = Buffer.from(response.data);
-            let detections = new Set(); 
-
-            if (fileName.endsWith('.tar')) {
-                const extract = tar.extract();
-                
-                extract.on('entry', (header, stream, next) => {
-                    let content = '';
-                    stream.on('data', chunk => content += chunk);
-                    stream.on('end', () => {
-                        // Escanea cada archivo dentro del .tar
-                        runScanner(content, header.name, detections);
-                        next();
+                if (fileName.endsWith('.tar')) {
+                    const extract = tar.extract();
+                    extract.on('entry', (header, stream, next) => {
+                        let content = '';
+                        stream.on('data', c => content += c);
+                        stream.on('end', () => {
+                            runScanner(content, header.name, detections);
+                            next();
+                        });
+                        stream.resume();
                     });
-                    stream.resume();
-                });
-
-                const bufferStream = Readable.from(buffer);
-                bufferStream.pipe(extract);
-
-                extract.on('finish', () => {
-                    generateFinalReport(statusMsg, detections, message.author, fileName);
-                });
-
-            } else {
-                // Escaneo directo para .sys, .plist, .log
-                const content = buffer.toString('utf-8');
-                runScanner(content, fileName, detections);
-                generateFinalReport(statusMsg, detections, message.author, fileName);
+                    const s = new Readable();
+                    s.push(buffer); s.push(null); s.pipe(extract);
+                    extract.on('finish', () => finalizeReport(statusMsg, detections, message.author, fileName));
+                } else {
+                    runScanner(buffer.toString('utf-8'), fileName, detections);
+                    finalizeReport(statusMsg, detections, message.author, fileName);
+                }
+            } catch (e) { 
+                console.error(e);
+                statusMsg.edit("❌ Error técnico al procesar el archivo."); 
             }
-
-        } catch (error) {
-            console.error("Error en el escaneo:", error);
-            statusMsg.edit("❌ **Error crítico:** No se pudo procesar el archivo.");
         }
     }
 });
 
-/**
- * Lógica de detección cruzada con toda la base de datos
- */
-function runScanner(text, sourceName, detections) {
-    const textLower = text.toLowerCase();
+// --- 4. INTERACCIONES DE TICKETS ---
+client.on('interactionCreate', async (i) => {
+    if (!i.isButton()) return;
 
-    // 1. Detección de Apps/Bundles (Jailbreak, Sideload, Proxies)
-    for (const [id, desc] of Object.entries(BLACKLIST_BUNDLES)) {
-        if (text.includes(id)) {
-            // Verificar que no esté en la Whitelist (ej. Discord)
-            if (!WHITELIST.BUNDLES.includes(id)) {
-                detections.add(`🚫 **${desc}** (\`${id}\`)`);
-            }
-        }
+    if (i.customId === 'abrir_ticket') {
+        const ch = await i.guild.channels.create({
+            name: `auditoria-${i.user.username}`,
+            type: ChannelType.GuildText,
+            parent: CATEGORY_ID,
+            permissionOverwrites: [
+                { id: i.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                { id: i.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] },
+                { id: ROLE_ANALISTA_1, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] },
+                { id: ROLE_ANALISTA_2, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] },
+            ],
+        });
+
+        await i.reply({ content: `✅ Ticket de auditoría abierto: ${ch}`, ephemeral: true });
+
+        const embedTicket = new EmbedBuilder()
+            .setTitle('📂 Auditoría Iniciada')
+            .setDescription(`Bienvenido ${i.user}.\n\nPor favor, sube tu archivo para que el analista lo procese.\n\n**Solo los analistas pueden ejecutar el escaneo.**`)
+            .setColor(0x00FF44);
+
+        const rowClose = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('cerrar_ticket').setLabel('Cerrar Auditoría').setStyle(ButtonStyle.Danger)
+        );
+
+        await ch.send({ embeds: [embedTicket], components: [rowClose] });
     }
 
-    // 2. Detección de Infraestructura de Cheats (IPs, Dominios específicos)
-    for (const [key, desc] of Object.entries(CHEAT_INFRA)) {
-        if (text.includes(key)) {
-            detections.add(`🌐 **Cheat Infra:** ${desc} (\`${key}\`)`);
-        }
+    if (i.customId === 'cerrar_ticket') {
+        const esAnalista = i.member.roles.cache.has(ROLE_ANALISTA_1) || i.member.roles.cache.has(ROLE_ANALISTA_2);
+        if (!esAnalista) return i.reply({ content: "❌ Solo un Analista puede cerrar este ticket.", ephemeral: true });
+        
+        await i.reply("🔒 Cerrando y limpiando datos en 5 segundos...");
+        setTimeout(() => i.channel.delete(), 5000);
     }
+});
 
-    // 3. Detección por TLDs Sospechosos (.xyz, .tk, .monster, etc)
-    SUSPICIOUS_TLDS.forEach(tld => {
-        if (textLower.includes(tld)) {
-            detections.add(`🔗 **Dominio de riesgo:** \`${tld}\``);
-        }
-    });
+// --- 5. FUNCIÓN DE ESCANEO PROFUNDO ---
+function runScanner(text, source, detections) {
+    const t = text.toLowerCase();
 
-    // 4. Detección de Hosting/VPS (Keywords)
-    VPS_KEYWORDS.forEach(vps => {
-        if (textLower.includes(vps)) {
-            detections.add(`🏢 **Conexión a VPS detectada:** \`${vps}\``);
-        }
-    });
-
-    // 5. Palabras clave sospechosas (Bypass, Inject, etc)
-    SUSPICIOUS_WORDS.forEach(word => {
-        if (textLower.includes(word.toLowerCase())) {
-            detections.add(`⚠️ **Rastro de palabra clave:** "${word}"`);
-        }
-    });
+    // Buscar Bundles de Hacks/Jailbreak
+    for (const [id, desc] of Object.entries(DATABASE.BUNDLES)) {
+        if (text.includes(id)) detections.add(`🚫 **${desc}** (\`${id}\`)`);
+    }
+    // Buscar Infraestructura (IPs/Dominios)
+    for (const [key, desc] of Object.entries(DATABASE.INFRA)) {
+        if (text.includes(key)) detections.add(`🌐 **Infra:** ${desc}`);
+    }
+    // Buscar Palabras Clave
+    DATABASE.WORDS.forEach(w => { if (t.includes(w)) detections.add(`⚠️ **Rastro:** "${w}"`); });
+    // Buscar TLDs Riesgosos
+    DATABASE.TLDS.forEach(tld => { if (t.includes(tld)) detections.add(`🔗 **Dominio:** ${tld}`); });
+    // Buscar VPS/Hosting
+    DATABASE.VPS.forEach(vps => { if (t.includes(vps)) detections.add(`🏢 **VPS detectada:** ${vps}`); });
 }
 
-/**
- * Genera el reporte visual en Discord
- */
-function generateFinalReport(msg, detections, user, fileName) {
+// --- 6. REPORTE FINAL ---
+function finalizeReport(msg, detections, user, fileName) {
     const embed = new EmbedBuilder()
-        .setTitle('🔍 Resultado de Auditoría - La Vagancia')
+        .setTitle('📊 Reporte Forense La Vagancia')
         .setTimestamp()
-        .setThumbnail(user.displayAvatarURL())
-        .setFooter({ text: 'Scanner Anti-Hacks iOS' });
+        .setFooter({ text: `Analista: ${user.username} | Archivo: ${fileName}` });
 
     if (detections.size > 0) {
-        // Limitar la cantidad de detecciones mostradas para no romper el Embed
-        const list = Array.from(detections).slice(0, 10).join('\n');
-        
-        embed.setColor(0xFF4444) // Rojo fuerte
-             .setDescription(`🚨 **ALERTA DE SEGURIDAD**\nEl usuario **${user.username}** envió un archivo (\`${fileName}\`) con firmas sospechosas.`)
-             .addFields({ name: 'Detecciones encontradas:', value: list || 'Múltiples rastros detectados.' });
-        
-        msg.edit({ content: `⚠️ **Posible infractor detectado:** ${user}`, embeds: [embed] });
+        embed.setColor(0xFF0000)
+             .setDescription(`🚨 **RESULTADO: SOSPECHOSO**\nSe han encontrado las siguientes coincidencias:`)
+             .addFields({ name: 'Detecciones:', value: Array.from(detections).slice(0, 15).join('\n') });
     } else {
-        embed.setColor(0x00FF44) // Verde flúor
-             .setDescription(`✅ **VERIFICACIÓN EXITOSA**\nNo se encontraron rastros de inyectores, proxies o infraestructura de hacks en el archivo de **${user.username}**.`);
-        
-        msg.edit({ content: null, embeds: [embed] });
+        embed.setColor(0x00FF00)
+             .setDescription(`✅ **RESULTADO: LIMPIO**\nNo se hallaron rastros de herramientas de inyección ni proxies conocidos.`);
     }
+    msg.edit({ content: null, embeds: [embed] });
 }
 
 client.login(TOKEN);
