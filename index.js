@@ -7,7 +7,7 @@ const axios = require('axios');
 const tar = require('tar-stream');
 const { Readable } = require('stream');
 
-// --- 1. BASE DE DATOS INTEGRADA (TODOS TUS PERFILES) ---
+// --- 1. BASE DE DATOS COMPLETA ---
 const DATABASE = {
     BUNDLES: {
         "com.opa334.TrollStore": "TrollStore — Sideload permanente",
@@ -63,11 +63,10 @@ const DATABASE = {
     EXT: [".sys", ".plist", ".tar", ".log", ".txt"]
 };
 
-// --- 2. CONFIGURACIÓN DE IDS Y CLIENTE ---
+// --- 2. IDS DEL SERVIDOR ---
 const CATEGORY_ID = '1488840757484982353';
 const ROLE_ANALISTA_1 = '1488841621649883176';
 const ROLE_ANALISTA_2 = '1211760228673257524';
-const TOKEN = process.env.DISCORD_TOKEN || 'TU_TOKEN_AQUI';
 
 const client = new Client({
     intents: [
@@ -75,26 +74,26 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers
-    ]
+    ],
+    partials: [Partials.Message, Partials.Channel]
 });
 
 client.once('ready', () => {
-    console.log(`✅ Scanner La Vagancia v3.0 listo como ${client.user.tag}`);
+    console.log(`✅ Scanner La Vagancia online: ${client.user.tag}`);
 });
 
-// --- 3. COMANDOS Y SCANNER ---
+// --- 3. COMANDOS ---
 client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
+    if (message.author.bot || !message.guild) return;
 
-    // Comando para crear el Panel de Tickets
     if (message.content === '!ticketss') {
-        if (!message.member.roles.cache.has(ROLE_ANALISTA_1) && !message.member.roles.cache.has(ROLE_ANALISTA_2)) return;
+        const esAnalista = message.member.roles.cache.has(ROLE_ANALISTA_1) || message.member.roles.cache.has(ROLE_ANALISTA_2);
+        if (!esAnalista) return;
 
         const embed = new EmbedBuilder()
             .setTitle('🛡️ Auditoría La Vagancia')
-            .setDescription('Presiona el botón para abrir un ticket de revisión.\n\n**Aguarde a que un analista lo atienda.**')
-            .setColor(0x2b2d31)
-            .setFooter({ text: 'Protección Anti-Cheat iOS' });
+            .setDescription('Presiona el botón para abrir un ticket de revisión.')
+            .setColor(0x2b2d31);
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('abrir_ticket').setLabel('Abrir Auditoría').setStyle(ButtonStyle.Primary).setEmoji('🔍')
@@ -104,7 +103,7 @@ client.on('messageCreate', async (message) => {
         if (message.deletable) await message.delete();
     }
 
-    // Lógica del Scanner (Solo se activa si un ANALISTA sube el archivo)
+    // Scanner
     const attachment = message.attachments.first();
     if (attachment) {
         const esAnalista = message.member.roles.cache.has(ROLE_ANALISTA_1) || message.member.roles.cache.has(ROLE_ANALISTA_2);
@@ -112,8 +111,7 @@ client.on('messageCreate', async (message) => {
 
         const fileName = attachment.name.toLowerCase();
         if (DATABASE.EXT.some(ext => fileName.endsWith(ext))) {
-            const statusMsg = await message.reply("📡 **Escaneando archivos en busca de inyecciones...**");
-            
+            const statusMsg = await message.reply("📡 **Escaneando...**");
             try {
                 const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
                 const buffer = Buffer.from(response.data);
@@ -137,18 +135,14 @@ client.on('messageCreate', async (message) => {
                     runScanner(buffer.toString('utf-8'), fileName, detections);
                     finalizeReport(statusMsg, detections, message.author, fileName);
                 }
-            } catch (e) { 
-                console.error(e);
-                statusMsg.edit("❌ Error técnico al procesar el archivo."); 
-            }
+            } catch (e) { statusMsg.edit("❌ Error al procesar."); }
         }
     }
 });
 
-// --- 4. INTERACCIONES DE TICKETS ---
+// --- 4. TICKETS ---
 client.on('interactionCreate', async (i) => {
     if (!i.isButton()) return;
-
     if (i.customId === 'abrir_ticket') {
         const ch = await i.guild.channels.create({
             name: `auditoria-${i.user.username}`,
@@ -161,66 +155,32 @@ client.on('interactionCreate', async (i) => {
                 { id: ROLE_ANALISTA_2, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] },
             ],
         });
-
-        await i.reply({ content: `✅ Ticket de auditoría abierto: ${ch}`, ephemeral: true });
-
-        const embedTicket = new EmbedBuilder()
-            .setTitle('📂 Auditoría Iniciada')
-            .setDescription(`Bienvenido ${i.user}.\n\nPor favor, sube tu archivo para que el analista lo procese.\n\n**Solo los analistas pueden ejecutar el escaneo.**`)
-            .setColor(0x00FF44);
-
-        const rowClose = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('cerrar_ticket').setLabel('Cerrar Auditoría').setStyle(ButtonStyle.Danger)
-        );
-
-        await ch.send({ embeds: [embedTicket], components: [rowClose] });
+        await i.reply({ content: `Ticket: ${ch}`, ephemeral: true });
+        await ch.send({ content: `Bienvenido ${i.user}, sube los archivos.`, components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cerrar_ticket').setLabel('Cerrar').setStyle(ButtonStyle.Danger))] });
     }
-
     if (i.customId === 'cerrar_ticket') {
-        const esAnalista = i.member.roles.cache.has(ROLE_ANALISTA_1) || i.member.roles.cache.has(ROLE_ANALISTA_2);
-        if (!esAnalista) return i.reply({ content: "❌ Solo un Analista puede cerrar este ticket.", ephemeral: true });
-        
-        await i.reply("🔒 Cerrando y limpiando datos en 5 segundos...");
-        setTimeout(() => i.channel.delete(), 5000);
+        if (!i.member.roles.cache.has(ROLE_ANALISTA_1) && !i.member.roles.cache.has(ROLE_ANALISTA_2)) return;
+        await i.reply("Cerrando...");
+        setTimeout(() => i.channel.delete(), 3000);
     }
 });
 
-// --- 5. FUNCIÓN DE ESCANEO PROFUNDO ---
 function runScanner(text, source, detections) {
     const t = text.toLowerCase();
-
-    // Buscar Bundles de Hacks/Jailbreak
-    for (const [id, desc] of Object.entries(DATABASE.BUNDLES)) {
-        if (text.includes(id)) detections.add(`🚫 **${desc}** (\`${id}\`)`);
-    }
-    // Buscar Infraestructura (IPs/Dominios)
-    for (const [key, desc] of Object.entries(DATABASE.INFRA)) {
-        if (text.includes(key)) detections.add(`🌐 **Infra:** ${desc}`);
-    }
-    // Buscar Palabras Clave
+    for (const [id, desc] of Object.entries(DATABASE.BUNDLES)) { if (text.includes(id)) detections.add(`🚫 **${desc}**`); }
+    for (const [key, desc] of Object.entries(DATABASE.INFRA)) { if (text.includes(key)) detections.add(`🌐 **Infra:** ${desc}`); }
     DATABASE.WORDS.forEach(w => { if (t.includes(w)) detections.add(`⚠️ **Rastro:** "${w}"`); });
-    // Buscar TLDs Riesgosos
     DATABASE.TLDS.forEach(tld => { if (t.includes(tld)) detections.add(`🔗 **Dominio:** ${tld}`); });
-    // Buscar VPS/Hosting
-    DATABASE.VPS.forEach(vps => { if (t.includes(vps)) detections.add(`🏢 **VPS detectada:** ${vps}`); });
+    DATABASE.VPS.forEach(vps => { if (t.includes(vps)) detections.add(`🏢 **VPS:** ${vps}`); });
 }
 
-// --- 6. REPORTE FINAL ---
 function finalizeReport(msg, detections, user, fileName) {
     const embed = new EmbedBuilder()
-        .setTitle('📊 Reporte Forense La Vagancia')
-        .setTimestamp()
-        .setFooter({ text: `Analista: ${user.username} | Archivo: ${fileName}` });
-
-    if (detections.size > 0) {
-        embed.setColor(0xFF0000)
-             .setDescription(`🚨 **RESULTADO: SOSPECHOSO**\nSe han encontrado las siguientes coincidencias:`)
-             .addFields({ name: 'Detecciones:', value: Array.from(detections).slice(0, 15).join('\n') });
-    } else {
-        embed.setColor(0x00FF00)
-             .setDescription(`✅ **RESULTADO: LIMPIO**\nNo se hallaron rastros de herramientas de inyección ni proxies conocidos.`);
-    }
+        .setTitle('📊 Reporte La Vagancia')
+        .setColor(detections.size > 0 ? 0xFF0000 : 0x00FF00)
+        .setDescription(detections.size > 0 ? `🚨 **SOSPECHOSO:**\n${Array.from(detections).join('\n')}` : `✅ **LIMPIO**`);
     msg.edit({ content: null, embeds: [embed] });
 }
 
-client.login(TOKEN);
+// ESTA LÍNEA ES LA QUE FALLA EN TU IMAGEN
+client.login(process.env.DISCORD_TOKEN);
