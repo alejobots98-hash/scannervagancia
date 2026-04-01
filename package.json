@@ -14,6 +14,7 @@
     "adm-zip": "^0.5.17",
     "axios": "^1.14.0",
     "discord.js": "^14.26.0",
-    "tar-stream": "^3.1.8"
+    "tar-stream": "^3.1.8",
+    "yauzl": "^3.3.0"
   }
 }
